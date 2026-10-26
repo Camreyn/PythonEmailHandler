@@ -180,6 +180,21 @@ message. There are no automatic retries, which avoids blindly duplicating
 notifications after partial or ambiguous delivery. The timeout applies to
 blocking socket operations, not a total wall-clock deadline.
 
+## Ansible and AAP examples
+
+The [Ansible example guide](examples/ansible/README.md) covers INFO reports,
+forced success and failure, an operation timeout, and a forced SMTP timeout.
+Ansible launches Python; Python calls this library to send each notification.
+The suite defaults to previews with mocked SMTP:
+
+```sh
+ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/test_email.yml
+```
+
+Set `email_dry_run=false` to use your configured SMTP server. The guide also
+includes a workflow example that sends the matching notification and then
+returns a successful or failed Ansible/AAP job status.
+
 ## Verification
 
 Run from the repository root:

@@ -1,0 +1,35 @@
+---
+- name: Demonstrate AAP job status after a Python email notification
+  hosts: "{{ email_test_hosts | default('localhost') }}"
+  gather_facts: false
+  tasks:
+    - name: Validate the requested job outcome
+      ansible.builtin.assert:
+        that:
+          - (email_case | default('success')) in ['success', 'failure', 'timeout']
+        fail_msg: Choose email_case=success, failure, or timeout.
+
+    - name: Run Python and preserve its nonzero result as an Ansible job failure
+      ansible.builtin.command:
+        argv: >-
+          {{ [email_python | default(ansible_playbook_python),
+              (email_repo_dir | default(playbook_dir ~ '/../..')) ~ '/examples/ansible/email_scenarios.py',
+              '--scenario', (email_case | default('success')),
+              '--timeout-seconds', (email_operation_timeout_seconds | default(0.2) | string),
+              '--context', (email_context | default('AAP workflow outcome demonstration'))]
+             + (['--dry-run'] if (email_dry_run | default(true) | bool) else [])
+             + (['--config-file', email_config_file]
+                if (email_config_file | default('') | length > 0) else []) }}
+      environment: "{{ email_environment | default({}) }}"
+      register: _email_workflow_result
+      when: not ansible_check_mode
+      changed_when: >-
+        not (email_dry_run | default(true) | bool)
+        and (_email_workflow_result.rc | default(-1)) in [0, 1, 124]
+      # The command module's normal rc != 0 behavior is intentional here.
+      # Python sends (or previews) the error report before returning 1 or 124.
+
+    - name: Display the successful Python report
+      ansible.builtin.debug:
+        msg: "{{ _email_workflow_result.stdout | from_json }}"
+      when: not ansible_check_mode

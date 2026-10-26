@@ -1,0 +1,5 @@
+---
+- name: Force an SMTP timeout and verify delivery failure handling
+  ansible.builtin.import_playbook: test_email.yml
+  vars:
+    email_case: smtp_timeout

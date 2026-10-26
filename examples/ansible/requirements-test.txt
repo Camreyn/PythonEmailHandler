@@ -1,0 +1,3 @@
+# Optional Linux controller tools for reproducing the Ansible integration checks.
+# This does not add any runtime dependencies to email_reporter.py.
+ansible-core==2.20.10

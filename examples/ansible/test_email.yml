@@ -1,0 +1,122 @@
+---
+- name: Test Python email reporting from Ansible
+  hosts: "{{ email_test_hosts | default('localhost') }}"
+  gather_facts: false
+  vars:
+    _email_case: "{{ email_case | default('all') }}"
+    _email_dry_run: "{{ email_dry_run | default(true) | bool }}"
+    _email_repo_dir: "{{ email_repo_dir | default(playbook_dir ~ '/../..') }}"
+    _email_python: "{{ email_python | default(ansible_playbook_python) }}"
+    _email_cases:
+      - name: info
+        rc: 0
+        level: INFO
+        operation_status: info
+      - name: success
+        rc: 0
+        level: SUCCESS
+        operation_status: success
+      - name: failure
+        rc: 1
+        level: ERROR
+        operation_status: failure
+      - name: timeout
+        rc: 124
+        level: ERROR
+        operation_status: timeout
+      - name: smtp_timeout
+        rc: 2
+        level: INFO
+        operation_status: info
+
+  tasks:
+    - name: Validate the requested scenario
+      ansible.builtin.assert:
+        that:
+          - _email_case in ['all', 'info', 'success', 'failure', 'timeout', 'smtp_timeout']
+          - (email_recipients | default([])) is sequence
+          - (email_recipients | default([])) is not string
+          - (email_attachments | default([])) is sequence
+          - (email_attachments | default([])) is not string
+        fail_msg: Choose a documented email_case and pass recipients and attachments as lists.
+
+    - name: Explain Ansible check mode
+      ansible.builtin.debug:
+        msg: Check mode does not launch Python or send email. Use email_dry_run=true to exercise the cases.
+      when: ansible_check_mode
+
+    - name: Exercise and verify the Python library
+      when: not ansible_check_mode
+      block:
+        - name: Build shared arguments for the Python scenario runner
+          ansible.builtin.set_fact:
+            _email_argv: >-
+              {{ [_email_python, _email_repo_dir ~ '/examples/ansible/email_scenarios.py',
+                  '--timeout-seconds', (email_operation_timeout_seconds | default(0.2) | string),
+                  '--context', (email_context | default('Ansible email reporter demonstration'))]
+                 + (['--dry-run'] if (_email_dry_run | bool) else [])
+                 + (['--config-file', email_config_file]
+                    if (email_config_file | default('') | length > 0) else []) }}
+
+        - name: Add recipient overrides as individual arguments
+          ansible.builtin.set_fact:
+            _email_argv: "{{ _email_argv + ['--recipient', item] }}"
+          loop: "{{ email_recipients | default([]) }}"
+
+        - name: Add attachments as individual arguments
+          ansible.builtin.set_fact:
+            _email_argv: "{{ _email_argv + ['--attachment', item] }}"
+          loop: "{{ email_attachments | default([]) }}"
+
+        - name: Invoke Python for each selected case
+          ansible.builtin.command:
+            argv: "{{ _email_argv + ['--scenario', item.name] }}"
+          environment: "{{ email_environment | default({}) }}"
+          loop: >-
+            {{ _email_cases if _email_case == 'all'
+               else (_email_cases | selectattr('name', 'equalto', _email_case) | list) }}
+          loop_control:
+            label: "{{ item.name }}"
+          register: _email_results
+          # Keep the expected error cases available for explicit assertions.
+          # Unexpected exit codes and delivery failures are rejected below.
+          failed_when: false
+          changed_when: >-
+            not (_email_dry_run | bool) and item.name != 'smtp_timeout'
+            and (_email_results.rc | default(-1)) == item.rc
+
+        - name: Verify each expected Python exit code
+          ansible.builtin.assert:
+            that:
+              - item.rc == item.item.rc
+            fail_msg: >-
+              Scenario {{ item.item.name }} returned {{ item.rc }}, expected
+              {{ item.item.rc }}. stdout={{ item.stdout }} stderr={{ item.stderr }}
+          loop: "{{ _email_results.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.name }}"
+
+        - name: Verify report severity and notification outcome
+          vars:
+            _email_report: "{{ item.stdout | from_json }}"
+          ansible.builtin.assert:
+            that:
+              - _email_report.scenario == item.item.name
+              - _email_report.exit_code == item.item.rc
+              - _email_report.level == item.item.level
+              - _email_report.operation_status == item.item.operation_status
+              - >-
+                _email_report.notification_status ==
+                ('failed' if item.item.name == 'smtp_timeout'
+                 else ('preview' if (_email_dry_run | bool) else 'smtp_accepted'))
+              - _email_report.forced_smtp_timeout == (item.item.name == 'smtp_timeout')
+          loop: "{{ _email_results.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.name }}"
+
+        - name: Display the reports produced by Python
+          ansible.builtin.debug:
+            msg: "{{ item.stdout | from_json }}"
+          loop: "{{ _email_results.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.name }}"

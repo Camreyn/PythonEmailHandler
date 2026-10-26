@@ -1,0 +1,58 @@
+name: Python and Ansible examples
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install development and Ansible test dependencies
+        run: python -m pip install -r requirements-dev.txt -r examples/ansible/requirements-test.txt
+      - name: Run Python tests
+        run: python -m pytest -q
+      - name: Check Ansible playbook syntax
+        run: |
+          for playbook in test_email info forced_success forced_failure operation_timeout smtp_timeout workflow_result; do
+            ansible-playbook -i examples/ansible/inventory.example.ini "examples/ansible/${playbook}.yml" --syntax-check
+          done
+      - name: Exercise every Ansible entry point without sending mail
+        run: |
+          for playbook in test_email info forced_success forced_failure operation_timeout smtp_timeout workflow_result; do
+            ansible-playbook -i examples/ansible/inventory.example.ini "examples/ansible/${playbook}.yml"
+          done
+      - name: Verify check mode does not run Python
+        run: |
+          ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/test_email.yml --check > check-mode.txt
+          cat check-mode.txt
+          if grep -q 'notification_status' check-mode.txt; then
+            echo 'Check mode unexpectedly ran the Python reporter'
+            exit 1
+          fi
+      - name: Ensure unexpected delivery failures fail the playbook
+        run: |
+          for scenario in info smtp_timeout; do
+            if ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/test_email.yml \
+              -e "email_case=${scenario}" -e email_config_file=/nonexistent/email.ini; then
+              echo "Missing config unexpectedly passed for ${scenario}"
+              exit 1
+            fi
+          done
+      - name: Verify AAP failure branches receive failed jobs after notification
+        run: |
+          for scenario in failure timeout; do
+            if ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/workflow_result.yml \
+              -e "email_case=${scenario}"; then
+              echo "Forced ${scenario} unexpectedly produced a successful job"
+              exit 1
+            fi
+          done

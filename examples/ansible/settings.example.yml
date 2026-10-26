@@ -1,0 +1,23 @@
+---
+email_case: all
+email_dry_run: true
+email_operation_timeout_seconds: 0.2
+email_context: |
+  Environment: TEST
+  Stack: WAS ND / BAW
+  Cell: TestCell
+  Node: Node01
+  Profile: AppSrv01
+  JVM: server1
+
+# Optional paths must exist on the machine executing Python.
+# email_config_file: /etc/was-automation/email.ini
+# email_recipients:
+#   - was-operations@example.com
+# email_attachments:
+#   - /var/tmp/was-health-report.txt
+
+# Optional child-process environment. Supply real values through Ansible Vault
+# or an AAP credential injector rather than committing credentials here.
+# email_environment:
+#   SMTP_PASSWORD: "{{ vault_smtp_password }}"

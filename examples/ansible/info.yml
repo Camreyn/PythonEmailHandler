@@ -1,0 +1,5 @@
+---
+- name: Send or preview an informational report
+  ansible.builtin.import_playbook: test_email.yml
+  vars:
+    email_case: info

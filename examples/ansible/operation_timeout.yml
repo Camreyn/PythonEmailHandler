@@ -1,0 +1,5 @@
+---
+- name: Time out a Python child operation and verify its error notification
+  ansible.builtin.import_playbook: test_email.yml
+  vars:
+    email_case: timeout

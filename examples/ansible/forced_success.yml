@@ -1,0 +1,5 @@
+---
+- name: Force an operation success and verify its success notification
+  ansible.builtin.import_playbook: test_email.yml
+  vars:
+    email_case: success
