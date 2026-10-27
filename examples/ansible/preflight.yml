@@ -1,0 +1,83 @@
+---
+- name: Verify the reporting runtime from Ansible Automation Platform
+  hosts: "{{ email_test_hosts | default('email_test_targets') }}"
+  gather_facts: false
+  vars:
+    _email_python: "{{ email_python | default('/usr/bin/python3') }}"
+    _email_repo_dir: "{{ email_repo_dir | default('/var/tmp/python-email-handler') }}"
+    _email_runtime_probe: |
+      import sys
+      if sys.version_info < (3, 6):
+          raise SystemExit("The email reporter requires Python 3.6 or newer")
+      import json
+      import socket
+      import ssl
+      from pathlib import Path
+      root = Path(sys.argv[1]).resolve()
+      runner = root / "examples" / "ansible" / "email_scenarios.py"
+      if not runner.is_file():
+          raise SystemExit("Scenario runner is missing: " + str(runner))
+      sys.path.insert(0, str(root))
+      import email_reporter
+      helper = Path(email_reporter.__file__).resolve()
+      if helper != (root / "email_reporter.py").resolve():
+          raise SystemExit("An unexpected email_reporter module was imported")
+      print(json.dumps({
+          "hostname": socket.gethostname(),
+          "python_executable": sys.executable,
+          "python_version": sys.version.split()[0],
+          "openssl_version": ssl.OPENSSL_VERSION,
+          "repository_root": str(root),
+          "helper_path": str(helper),
+          "scenario_runner_path": str(runner),
+          "helper_import": "ok"
+      }, sort_keys=True))
+
+  tasks:
+    - name: Explain why the preflight needs a Run job
+      ansible.builtin.debug:
+        msg: Select job type Run in AAP. Check mode does not execute the runtime probes.
+      when: ansible_check_mode
+
+    - name: Check the execution host without sending email
+      when: not ansible_check_mode
+      block:
+        - name: Locate Python and import the helper before using Python-based Ansible modules
+          # raw does not itself require an existing remote Ansible Python runtime.
+          # Quote both code and paths because raw executes through a shell.
+          ansible.builtin.raw: >-
+            {{ _email_python | quote }} -c {{ _email_runtime_probe | quote }}
+            {{ _email_repo_dir | quote }}
+          register: _email_runtime
+          changed_when: false
+
+        - name: Display the interpreter and helper actually used on this host
+          ansible.builtin.debug:
+            msg: "{{ _email_runtime.stdout | from_json }}"
+
+        - name: Verify Ansible module execution and preview an INFO notification through Python
+          ansible.builtin.command:
+            argv: >-
+              {{ [_email_python, _email_repo_dir ~ '/examples/ansible/email_scenarios.py',
+                  '--scenario', 'info', '--dry-run',
+                  '--context', 'AAP preflight: configuration and Python import verification']
+                 + (['--config-file', email_config_file]
+                    if (email_config_file | default('') | length > 0) else []) }}
+          environment: "{{ email_environment | default({}) }}"
+          register: _email_preflight_preview
+          changed_when: false
+
+        - name: Verify the Python preflight result
+          vars:
+            _email_report: "{{ _email_preflight_preview.stdout | from_json }}"
+          ansible.builtin.assert:
+            that:
+              - _email_report.scenario == 'info'
+              - _email_report.notification_status == 'preview'
+              - _email_report.level == 'INFO'
+              - _email_report.exit_code == 0
+            fail_msg: Python must produce a successful preview before running the email scenarios.
+
+        - name: Display the notification preview for verification
+          ansible.builtin.debug:
+            msg: "{{ _email_preflight_preview.stdout | from_json }}"

@@ -1,12 +1,12 @@
 ---
 - name: Test Python email reporting from Ansible
-  hosts: "{{ email_test_hosts | default('localhost') }}"
+  hosts: "{{ email_test_hosts | default('email_test_targets') }}"
   gather_facts: false
   vars:
     _email_case: "{{ email_case | default('all') }}"
     _email_dry_run: "{{ email_dry_run | default(true) | bool }}"
-    _email_repo_dir: "{{ email_repo_dir | default(playbook_dir ~ '/../..') }}"
-    _email_python: "{{ email_python | default(ansible_playbook_python) }}"
+    _email_repo_dir: "{{ email_repo_dir | default('/var/tmp/python-email-handler') }}"
+    _email_python: "{{ email_python | default('/usr/bin/python3') }}"
     _email_cases:
       - name: info
         rc: 0

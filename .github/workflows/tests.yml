@@ -22,17 +22,17 @@ jobs:
         run: python -m pytest -q
       - name: Check Ansible playbook syntax
         run: |
-          for playbook in test_email info forced_success forced_failure operation_timeout smtp_timeout workflow_result; do
-            ansible-playbook -i examples/ansible/inventory.example.ini "examples/ansible/${playbook}.yml" --syntax-check
+          for playbook in deploy_and_test preflight test_email info forced_success forced_failure operation_timeout smtp_timeout workflow_result; do
+            ansible-playbook -i tests/fixtures/ci_inventory.ini "examples/ansible/${playbook}.yml" --syntax-check
           done
       - name: Exercise every Ansible entry point without sending mail
         run: |
-          for playbook in test_email info forced_success forced_failure operation_timeout smtp_timeout workflow_result; do
-            ansible-playbook -i examples/ansible/inventory.example.ini "examples/ansible/${playbook}.yml"
+          for playbook in deploy_and_test preflight test_email info forced_success forced_failure operation_timeout smtp_timeout workflow_result; do
+            ansible-playbook -i tests/fixtures/ci_inventory.ini "examples/ansible/${playbook}.yml"
           done
       - name: Verify check mode does not run Python
         run: |
-          ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/test_email.yml --check > check-mode.txt
+          ansible-playbook -i tests/fixtures/ci_inventory.ini examples/ansible/test_email.yml --check > check-mode.txt
           cat check-mode.txt
           if grep -q 'notification_status' check-mode.txt; then
             echo 'Check mode unexpectedly ran the Python reporter'
@@ -41,7 +41,7 @@ jobs:
       - name: Ensure unexpected delivery failures fail the playbook
         run: |
           for scenario in info smtp_timeout; do
-            if ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/test_email.yml \
+            if ansible-playbook -i tests/fixtures/ci_inventory.ini examples/ansible/test_email.yml \
               -e "email_case=${scenario}" -e email_config_file=/nonexistent/email.ini; then
               echo "Missing config unexpectedly passed for ${scenario}"
               exit 1
@@ -50,9 +50,21 @@ jobs:
       - name: Verify AAP failure branches receive failed jobs after notification
         run: |
           for scenario in failure timeout; do
-            if ansible-playbook -i examples/ansible/inventory.example.ini examples/ansible/workflow_result.yml \
+            if ansible-playbook -i tests/fixtures/ci_inventory.ini examples/ansible/workflow_result.yml \
               -e "email_case=${scenario}"; then
               echo "Forced ${scenario} unexpectedly produced a successful job"
               exit 1
             fi
           done
+      - name: Reject missing target interpreters and missing copied files
+        run: |
+          if ansible-playbook -i tests/fixtures/ci_inventory.ini examples/ansible/preflight.yml \
+            -e email_python=/nonexistent/python3; then
+            echo 'A missing target interpreter unexpectedly passed preflight'
+            exit 1
+          fi
+          if ansible-playbook -i tests/fixtures/ci_inventory.ini examples/ansible/preflight.yml \
+            -e email_repo_dir=/nonexistent/python-email-handler; then
+            echo 'Missing target files unexpectedly passed preflight'
+            exit 1
+          fi

@@ -164,3 +164,60 @@ def test_each_wrapper_selects_its_documented_scenario(filename, scenario):
     plays = yaml.safe_load((ROOT / "examples" / "ansible" / filename).read_text(encoding="utf-8"))
     assert plays[0]["ansible.builtin.import_playbook"] == "test_email.yml"
     assert plays[0]["vars"]["email_case"] == scenario
+
+
+def test_preflight_probe_reports_the_actual_interpreter_and_copied_helper(tmp_path):
+    playbook = yaml.safe_load((ROOT / "examples" / "ansible" / "preflight.yml").read_text(encoding="utf-8"))
+    code = playbook[0]["vars"]["_email_runtime_probe"]
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(ROOT)],
+        cwd=str(tmp_path), capture_output=True, text=True, timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout)
+    assert report["helper_import"] == "ok"
+    assert Path(report["helper_path"]).resolve() == (ROOT / "email_reporter.py").resolve()
+    assert Path(report["scenario_runner_path"]).resolve() == RUNNER.resolve()
+    assert Path(report["python_executable"]).resolve() == Path(sys.executable).resolve()
+    assert report["hostname"]
+    assert report["openssl_version"]
+    ast.parse(code, feature_version=(3, 6))
+
+
+def test_preflight_probe_rejects_missing_target_files(tmp_path):
+    playbook = yaml.safe_load((ROOT / "examples" / "ansible" / "preflight.yml").read_text(encoding="utf-8"))
+    completed = subprocess.run(
+        [sys.executable, "-c", playbook[0]["vars"]["_email_runtime_probe"], str(tmp_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert completed.returncode != 0
+    assert "Scenario runner is missing" in completed.stderr
+
+
+@pytest.mark.parametrize("filename", ["test_email.yml", "workflow_result.yml", "preflight.yml", "deploy_and_test.yml"])
+def test_operational_playbooks_default_to_managed_servers(filename):
+    plays = yaml.safe_load((ROOT / "examples" / "ansible" / filename).read_text(encoding="utf-8"))
+    assert "email_test_targets" in plays[0]["hosts"]
+    assert "localhost" not in plays[0]["hosts"]
+    assert "ansible_playbook_python" not in json.dumps(plays)
+    assert "delegate_to" not in json.dumps(plays)
+
+
+def test_deployment_copies_required_code_without_overwriting_live_config():
+    plays = yaml.safe_load((ROOT / "examples" / "ansible" / "deploy_and_test.yml").read_text(encoding="utf-8"))
+    block = plays[0]["tasks"][1]["block"]
+    copy_task = next(task for task in block if "ansible.builtin.copy" in task)
+    destinations = {item["target"] for item in copy_task["loop"]}
+    assert destinations == {
+        "email_reporter.py", "examples/ansible/email_scenarios.py", "email.example.ini"
+    }
+    assert plays[1]["ansible.builtin.import_playbook"] == "preflight.yml"
+    assert plays[2]["ansible.builtin.import_playbook"] == "test_email.yml"
+
+
+def test_operator_guides_use_aap_instead_of_ansible_cli():
+    for relative in ("README.md", "examples/ansible/README.md", "docs/TROUBLESHOOTING.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert "ansible-playbook" not in text
+    inventory = (ROOT / "examples" / "ansible" / "inventory.example.ini").read_text(encoding="utf-8")
+    assert "ansible_connection=local" not in inventory

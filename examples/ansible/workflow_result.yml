@@ -1,6 +1,6 @@
 ---
 - name: Demonstrate AAP job status after a Python email notification
-  hosts: "{{ email_test_hosts | default('localhost') }}"
+  hosts: "{{ email_test_hosts | default('email_test_targets') }}"
   gather_facts: false
   tasks:
     - name: Validate the requested job outcome
@@ -12,8 +12,8 @@
     - name: Run Python and preserve its nonzero result as an Ansible job failure
       ansible.builtin.command:
         argv: >-
-          {{ [email_python | default(ansible_playbook_python),
-              (email_repo_dir | default(playbook_dir ~ '/../..')) ~ '/examples/ansible/email_scenarios.py',
+          {{ [email_python | default('/usr/bin/python3'),
+              (email_repo_dir | default('/var/tmp/python-email-handler')) ~ '/examples/ansible/email_scenarios.py',
               '--scenario', (email_case | default('success')),
               '--timeout-seconds', (email_operation_timeout_seconds | default(0.2) | string),
               '--context', (email_context | default('AAP workflow outcome demonstration'))]

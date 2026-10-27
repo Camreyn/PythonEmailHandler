@@ -1,0 +1,57 @@
+---
+- name: Copy the Python reporting files from the AAP project to managed servers
+  hosts: "{{ email_test_hosts | default('email_test_targets') }}"
+  gather_facts: false
+  vars:
+    _email_python: "{{ email_python | default('/usr/bin/python3') }}"
+    _email_repo_dir: "{{ email_repo_dir | default('/var/tmp/python-email-handler') }}"
+    _email_version_probe: >-
+      import sys; assert sys.version_info >= (3, 6), 'Python 3.6+ is required';
+      import ssl; print(sys.executable); print(sys.version)
+
+  tasks:
+    - name: Validate the destination directory
+      ansible.builtin.assert:
+        that:
+          - _email_repo_dir is string
+          - _email_repo_dir.startswith('/')
+          - _email_repo_dir != '/'
+        fail_msg: email_repo_dir must name an absolute project directory on the managed server.
+
+    - name: Stage the reporting files on each target
+      when: not ansible_check_mode
+      block:
+        - name: Verify the selected target Python before running Python-based Ansible modules
+          ansible.builtin.raw: "{{ _email_python | quote }} -c {{ _email_version_probe | quote }}"
+          changed_when: false
+
+        - name: Create the reporting directory layout on the target
+          ansible.builtin.file:
+            path: "{{ _email_repo_dir }}{{ item }}"
+            state: directory
+            mode: '0700'
+          loop:
+            - ''
+            - /examples
+            - /examples/ansible
+
+        - name: Copy the helper, runner, and preview configuration from the AAP project
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../{{ item.source }}"
+            dest: "{{ _email_repo_dir }}/{{ item.target }}"
+            mode: '0600'
+          loop:
+            - source: email_reporter.py
+              target: email_reporter.py
+            - source: examples/ansible/email_scenarios.py
+              target: examples/ansible/email_scenarios.py
+            - source: email.example.ini
+              target: email.example.ini
+          loop_control:
+            label: "{{ item.target }}"
+
+- name: Verify the copied target runtime and preview configuration
+  ansible.builtin.import_playbook: preflight.yml
+
+- name: Run and verify the selected scenarios on the managed targets
+  ansible.builtin.import_playbook: test_email.yml

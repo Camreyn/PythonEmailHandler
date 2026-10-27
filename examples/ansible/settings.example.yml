@@ -1,4 +1,8 @@
 ---
+# Paste these values into the AAP Job Template Extra Variables.
+email_test_hosts: email_test_targets
+email_python: /usr/bin/python3
+email_repo_dir: /var/tmp/python-email-handler
 email_case: all
 email_dry_run: true
 email_operation_timeout_seconds: 0.2
