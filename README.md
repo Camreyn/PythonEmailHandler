@@ -182,6 +182,9 @@ blocking socket operations, not a total wall-clock deadline.
 
 ## Ansible Automation Platform examples
 
+Start with the [AAP email and timeout quick start](docs/AAP_EMAIL_TIMEOUT_QUICKSTART.md)
+for the Job Template settings, Python trigger tasks, and expected results.
+
 Use the [troubleshooting guide](docs/TROUBLESHOOTING.md) for separate Python
 and AAP-only operator instructions, including copying the Python files to
 managed servers, checking interpreters/imports, launching every scenario,

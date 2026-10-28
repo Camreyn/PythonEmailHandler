@@ -5,6 +5,9 @@ and invokes Python there. Python imports `email_reporter` and sends the email.
 No reporting task runs on localhost or delegates back to the AAP container.
 Operator execution uses AAP Job Templates.
 
+For INFO and timeout notifications, start with the
+[AAP email and timeout quick start](../../docs/AAP_EMAIL_TIMEOUT_QUICKSTART.md).
+
 Use the [troubleshooting and test guide](../../docs/TROUBLESHOOTING.md) for
 standalone Python tests, AAP setup, copying files, runtime checks, scenario
 launches, expected output, and fixes.
